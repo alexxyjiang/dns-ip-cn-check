@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# check if the IP is in the assigned IP blocks
+# check whether a domain / ipv4 belongs to China, by checking the assigned IP blocks of China
 import argparse
 import logging
 import requests
@@ -14,10 +14,10 @@ def init_logging():
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--apnic_url', '-u', type=str, default='http://ftp.apnic.net/stats/apnic/delegated-apnic-latest', help='APNIC URL')
-    parser.add_argument('--apnic_assigned_file', '-f', type=str, default='assigned.txt', help='APNIC assigned file')
+    parser.add_argument('--apnic_url', '-u', type=str, default='http://ftp.apnic.net/stats/apnic/delegated-apnic-latest', help='APNIC assigned ip status, provide an empty string to disable')
+    parser.add_argument('--apnic_assigned_file', '-f', type=str, default='assigned.txt', help='APNIC assigned file, enabled if apnic_url is empty')
     parser.add_argument('--input_file', '-i', type=str, default='input.txt', help='input file')
-    parser.add_argument('--stdin', '-s', action=argparse.BooleanOptionalAction, help='read from stdin')
+    parser.add_argument('--stdin', '-s', action=argparse.BooleanOptionalAction, help='read from stdin, ignore input_file if enabled')
     args = parser.parse_args()
     return args
 
@@ -107,16 +107,16 @@ def main():
     args = parse_args()
     dict_target = {}
     if args.apnic_url is not None and args.apnic_url != '':
-        logging.info(f'Load assigned IP blocks from {args.apnic_url}')
+        logging.info(f'Loading assigned IP blocks from {args.apnic_url} ...')
         load_assigned_ip_blocks(dict_target, load_from_url(args.apnic_url))
     elif args.apnic_assigned_file is not None and args.apnic_assigned_file != '':
-        logging.info(f'Load assigned IP blocks from {args.apnic_assigned_file}')
+        logging.info(f'Loading assigned IP blocks from {args.apnic_assigned_file} ...')
         load_assigned_ip_blocks(dict_target, load_from_file(args.apnic_assigned_file))
     else:
         logging.error('No assigned IP blocks loaded')
     logging.info(f'Assigned IP blocks: {len(dict_target)}')
     if args.stdin:
-        logging.info('Parsing dig result from stdin')
+        logging.info('Parsing dig result from stdin, output to stdout')
         for line in sys.stdin:
             items = line.strip().split('\t')
             if len(items) < 3:
@@ -129,19 +129,21 @@ def main():
                     if blocks[0] in dict_target and blocks[1] in dict_target[blocks[0]] and blocks[2] in dict_target[blocks[0]][blocks[1]]:
                         print(line.strip())
     else:
-        logging.info(f'Parsing dig result from {args.input_file}')
+        logging.info(f'Parsing dig result from {args.input_file}, output to {args.input_file}.out')
         text = load_from_file(args.input_file)
-        for line in text.split('\n'):
-            items = line.strip().split('\t')
-            if len(items) < 3:
-                continue
-            tp = items[-2]
-            ip = items[-1]
-            if tp == 'A':
-                blocks = ip.split('.')
-                if len(blocks) == 4:
-                    if blocks[0] in dict_target and blocks[1] in dict_target[blocks[0]] and blocks[2] in dict_target[blocks[0]][blocks[1]]:
-                        print(line.strip())
+        with open(args.input_file + '.out', 'w') as f:
+            for line in text.split('\n'):
+                items = line.strip().split('\t')
+                if len(items) < 3:
+                    continue
+                tp = items[-2]
+                ip = items[-1]
+                if tp == 'A':
+                    blocks = ip.split('.')
+                    if len(blocks) == 4:
+                        if blocks[0] in dict_target and blocks[1] in dict_target[blocks[0]] and blocks[2] in dict_target[blocks[0]][blocks[1]]:
+                            f.write(line.strip() + '\n')
+    logging.info('Done')
 
 
 if __name__ == '__main__':
